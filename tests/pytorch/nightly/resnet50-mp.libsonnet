@@ -18,10 +18,12 @@ local gpus = import 'templates/gpus.libsonnet';
 local mixins = import 'templates/mixins.libsonnet';
 local timeouts = import 'templates/timeouts.libsonnet';
 local tpus = import 'templates/tpus.libsonnet';
+# local base = import 'templates/base.libsonnet';
+# local gpus = import 'templates/gpus.libsonnet';
 
 {
-  local resnet50 = self.resnet50,
-  resnet50:: common.PyTorchTest {
+  local resnet50 = self.resnet50, # local defines a variable
+  resnet50:: common.PyTorchTest { #Hidden fields, defined with ::, which do not appear in generated JSON
     modelName: 'resnet50-mp',
     trainScript: 'pytorch/xla/test/test_train_mp_imagenet.py',
     batch_size: null,
@@ -139,7 +141,7 @@ local tpus = import 'templates/tpus.libsonnet';
     batch_size: 256,
   },
 
-  local gpu = self.gpu,
+  local gpu = self.gpu, # xw32: so is it true that `self.gpu` refers to `gpu::` below?
   gpu:: common.GpuMixin {
     cpu: '7.0',
     memory: '40Gi',
@@ -151,11 +153,97 @@ local tpus = import 'templates/tpus.libsonnet';
     flags+: {
       modelDir: null,
     },
+    tpuSettings+: {
+      tpuVmExports+: |||
+        export PJRT_DEVICE=GPU
+      |||,
+    },
   },
   local v100x4 = self.v100x4,
   v100x4:: gpu {
     accelerator: gpus.teslaV100 { count: 4 },
   },
+
+#  local multinodeTraining = base.BaseTest {
+#    // Configure job name
+#    frameworkPrefix: "pytorch-nightly",
+#    modelName: "resnet50",
+#    mode: "training",
+#    timeout: 3600, # 1 hour, in seconds
+#
+#    // Set up runtime environment
+#    image: 'us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/xla',
+#    imageTag: 'nightly_3.10_cuda_12.1',
+#    accelerator: gpus.teslaV100,
+#    outputBucket: null,
+#
+#    podTemplate+:: {
+#      spec+: { # why sometimes it uses single : but sometimes use double : such as 'initContainerMap+:: {'
+#        completionMode: 'Indexed',
+#        completions: 4,
+#        parallelism: 4,
+#        tolerations: [
+#          {
+#            key: "nvidia.com/gpu",
+#            operator: "Exists",
+#            effect: "NoSchedule",
+#          },
+#        ],
+#        ports: [
+#          {
+#            containerPort: 1234,
+#          },
+#        ],
+#        initContainers+:: {
+#          kubectl expose kubernetes-bootcamp --type="ClusterIP" --port 1234 --selector="job-name: ptxla-hello-world"
+#        },
+#      },
+#    },
+#
+#    // Override entrypoint to install PyTorch/XLA official models before running `command`.
+#    entrypoint: [
+#      'bash',
+#      '-c',
+#      |||
+#        export PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+#        export LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+#        pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+#        pip install --user \
+#          https://storage.googleapis.com/pytorch-xla-releases/wheels/cuda/12.1/torch_xla-2.1.0-cp310-cp310-manylinux_2_28_x86_64.whl
+#        git clone --depth=1 https://github.com/pytorch/pytorch.git
+#        cd pytorch
+#        git clone https://github.com/pytorch/xla.git
+#
+#        while true
+#        do
+#          ip=$(getent hosts ptxla-hello-world-0.headless-svc | awk {'print $1'})
+#          if [ $? -eq 0 ] && [ \"${ip}\" != \"\" ]
+#          then
+#            break
+#          else
+#            sleep 10
+#          fi
+#        done
+#        echo $ip
+#
+#        # Run whatever is in `command` here
+#        ${@:0}
+#      |||
+#    ],
+#    command: [
+#      'PJRT_DEVICE=CUDA',
+#      'torchrun',
+#      '--nnodes=2',
+#      '--node_rank=$JOB_COMPLETION_INDEX',
+#      '--nproc_per_node=2',
+#      '--rdzv_endpoint=$ip:12355',
+#      'xla/test/test_train_mp_imagenet.py',
+#      '--fake_data',
+#      '--pjrt_distributed',
+#      '--batch_size=128',
+#      '--num_epochs=1',
+#    ],
+#  },
 
   local pjrt_ddp = self.pjrt_ddp,
   pjrt_ddp:: {
@@ -177,6 +265,11 @@ local tpus = import 'templates/tpus.libsonnet';
   pjrt:: common.PyTorchTpuVmMixin + tpuVm {
     modelName: 'resnet50-pjrt',
   },
+  local pjrtCuda = self.pjrtCuda,
+  pjrtCuda:: common.GpuMixin {
+    modelName: 'resnet50-pjrtCuda',
+  },
+
   local spmd(sharding) = self.spmd(sharding),
   spmd(sharding):: pjrt {
     // Include sharding spec in the test name
@@ -194,6 +287,8 @@ local tpus = import 'templates/tpus.libsonnet';
   },
 
   configs: [
+    # no need to change `functional`, 
+    resnet50 + functional + v100x4 + timeouts.Hours(1),
     // PJRT
     resnet50 + fake_data + v2_8 + timeouts.Hours(3) + pjrt,
     resnet50 + fake_data + v3_8 + timeouts.Hours(2) + pjrt,

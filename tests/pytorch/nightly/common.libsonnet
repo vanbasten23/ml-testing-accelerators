@@ -77,7 +77,7 @@ local volumes = import 'templates/volumes.libsonnet';
     },
   },
   Functional:: mixins.Functional {
-    schedule: '0 7 * * *',
+    schedule: '0 7 * * *', # xw32: why is this field missing in the final generated file?
     tpuSettings+: {
       preemptible: false,
     },
@@ -114,13 +114,48 @@ local volumes = import 'templates/volumes.libsonnet';
     },
   },
 
+
   datasetsVolume: volumes.PersistentVolumeSpec {
     name: 'pytorch-datasets-claim',
     mountPath: '/datasets',
   },
-  GpuMixin:: {
+  GpuMixin:: experimental.PjRtCuda {
     local config = self,
-    imageTag+: '_cuda_11.8',
+    imageTag: 'nightly_3.10_cuda_12.1',
+
+    tpuSettings+: {
+      softwareVersion: 'tpu-ubuntu2204-base',
+      tpuVmPytorchSetup: |||
+        pip3 install -U setuptools
+        # `unattended-upgr` blocks us from installing apt dependencies
+        sudo systemctl stop unattended-upgrades
+        sudo apt-get -y update
+        sudo apt install -y libopenblas-base
+
+        export PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        export LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+
+        pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+        pip install --user \
+          https://storage.googleapis.com/pytorch-xla-releases/wheels/cuda/12.1/torch_xla-2.1.0-cp310-cp310-manylinux_2_28_x86_64.whl
+
+        git clone --depth=1 https://github.com/pytorch/pytorch.git
+        cd pytorch
+        git clone https://github.com/pytorch/xla.git
+
+        while true
+        do
+          ip=$(getent hosts ptxla-hello-world-0.headless-svc | awk {'print $1'})
+          if [ $? -eq 0 ] && [ \"${ip}\" != \"\" ]
+          then
+            break
+          else
+            sleep 10
+          fi
+        done
+        echo $ip
+      |||,
+    },
 
     podTemplate+:: {
       spec+: {

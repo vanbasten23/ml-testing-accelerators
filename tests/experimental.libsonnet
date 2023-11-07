@@ -171,6 +171,7 @@ local volumes = import 'templates/volumes.libsonnet';
     // Pass TPU VM name to test container
     podTemplate+:: {
       spec+: {
+        # xw32: where is config.timeout defined?
         activeDeadlineSeconds: config.timeout,
         containerMap+:: {
           train+: {

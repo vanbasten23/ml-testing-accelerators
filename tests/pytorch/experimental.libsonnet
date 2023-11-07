@@ -17,7 +17,7 @@ local utils = import 'templates/utils.libsonnet';
 
 {
   PyTorchTpuVmMixin:: experimental.BaseTpuVmMixin {
-    local config = self,
+    local config = self, #xw32: what does this mean?
 
     // Don't need to mount datasets within Kubernetes for TPU VM.
     volumeMap+: { datasets: null },
@@ -125,6 +125,14 @@ local utils = import 'templates/utils.libsonnet';
       |||,
       tpuVmXlaDistPrefix: null,
       tpuVmMainCommandWorkers: 'all',
+    },
+  },
+  PjRtCuda:: {
+    tpuSettings+: {
+      tpuVmExports: |||
+        export PJRT_DEVICE=CUDA
+      |||,
+      tpuVmXlaDistPrefix: null,
     },
   },
 }

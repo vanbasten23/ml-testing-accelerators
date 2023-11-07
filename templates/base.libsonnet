@@ -138,7 +138,7 @@ local volumes = import 'volumes.libsonnet';
 
         restartPolicy: 'Never',
         initContainerMap:: {},
-        initContainers: [
+        initContainers: [ # xw32: why is `{ name: name }` never printed? Such as `tpu-version` in ml-testing-accelerators/tests/pytorch/nightly/common.libsonnet line35
           { name: name } + pod.initContainerMap[name]
           for name in std.objectFields(pod.initContainerMap)
           if pod.initContainerMap[name] != null
