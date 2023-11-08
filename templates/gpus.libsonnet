@@ -20,7 +20,7 @@ local base = import 'base.libsonnet';
 
     name: '%(version)s-x%(count)d' % gpu,
     type: 'gpu',
-    version: error 'Must specify GPUSpec `version`', # xw32: why is this field `version` not in the generated file?
+    version: error 'Must specify GPUSpec `version`', # xw32: why is this field `version` not in the generated file? A: gpu type in the node selector.
     count: 1,
     replicas: gpu.count,
 

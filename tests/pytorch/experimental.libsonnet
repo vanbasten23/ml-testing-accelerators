@@ -18,6 +18,7 @@ local utils = import 'templates/utils.libsonnet';
 {
   PyTorchTpuVmMixin:: experimental.BaseTpuVmMixin {
     local config = self, #xw32: what does this mean?
+    # refers to resnet50 + fake_data + v3_8 + timeouts.Hours(2) + pjrt, timeout comes form fake_data.
 
     // Don't need to mount datasets within Kubernetes for TPU VM.
     volumeMap+: { datasets: null },
@@ -127,12 +128,86 @@ local utils = import 'templates/utils.libsonnet';
       tpuVmMainCommandWorkers: 'all',
     },
   },
+  PyTorchCudaVmMixin:: experimental.BaseCudaVmMixin {
+    local config = self,
+
+    // Don't need to mount datasets within Kubernetes for cuda VM.
+    volumeMap+: { datasets: null },
+
+    cudaSettings+: {
+      cudaVmPytorchSetup: |||
+        echo No PyTorch setup required.
+      |||,
+      cudaVmExtraSetup: |||
+        echo No extra setup required.
+      |||,
+    },
+    podTemplate+:: {
+      spec+: {
+        containerMap+:: {
+          monitor: null,
+          train+: {
+            local scriptSettings = {
+              // Distribute command with xla_dist on pods
+              testCommand: if config.cudaSettings.cudaVmXlaDistPrefix == null then
+                utils.toCommandString(config.command)
+              else
+                utils.toCommandString(
+                  config.cudaSettings.cudaVmXlaDistPrefix + config.command
+                ),
+              commandWorkers: config.cudaSettings.cudaVmMainCommandWorkers,
+              pytorchSetup: config.cudaSettings.cudaVmPytorchSetup,
+              extraSetup: config.cudaSettings.cudaVmExtraSetup,
+              exports: config.cudaSettings.cudaVmExports,
+            },
+            args: null,
+            // PyTorch tests are structured as bash scripts that run directly
+            // on the Cloud cuda VM instead of using docker images.
+            command: [
+              'bash',
+              '-c',
+              |||
+                set -x
+                set -u
+
+                cat > workersetup.sh << TEST_SCRIPT_EOF
+                sudo apt-get -y update
+                // Ensure lock is released after udpate
+                sudo kill -9 $(lsof /var/lib/dpkg/lock-frontend | awk '{print $2}')
+                sudo dpkg --configure -a
+                sudo apt-get -y install nfs-common
+                sudo mkdir /datasets && sudo mount.nfs $(PYTORCH_DATA_LOCATION) /datasets
+
+                yes '' | gcloud compute config-ssh
+
+                cd
+                %(pytorchSetup)s
+
+                cd
+                %(extraSetup)s
+                TEST_SCRIPT_EOF
+
+                cat > testscript.sh << 'TEST_SCRIPT_EOF'
+                %(exports)s
+                %(testCommand)s
+                TEST_SCRIPT_EOF
+
+                exit_code=$?
+                bash /scripts/cleanup.sh
+                exit $exit_code
+              ||| % scriptSettings,
+            ],
+          },
+        },
+      },
+    },
+  },
   PjRtCuda:: {
-    tpuSettings+: {
-      tpuVmExports: |||
+    cudaSettings+: {
+      cudaVmExports: |||
         export PJRT_DEVICE=CUDA
       |||,
-      tpuVmXlaDistPrefix: null,
+      cudaVmXlaDistPrefix: null,
     },
   },
 }

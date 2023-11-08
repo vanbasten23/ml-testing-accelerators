@@ -141,7 +141,7 @@ local tpus = import 'templates/tpus.libsonnet';
     batch_size: 256,
   },
 
-  local gpu = self.gpu, # xw32: so is it true that `self.gpu` refers to `gpu::` below?
+  local gpu = self.gpu, # xw32: so is it true that `self.gpu` refers to `gpu::` below? A: yes, we can omit `self` and write `gpu` directly.
   gpu:: common.GpuMixin {
     cpu: '7.0',
     memory: '40Gi',

@@ -77,7 +77,7 @@ local volumes = import 'templates/volumes.libsonnet';
     },
   },
   Functional:: mixins.Functional {
-    schedule: '0 7 * * *', # xw32: why is this field missing in the final generated file?
+    schedule: '0 7 * * *', # xw32: why is this field missing in the final generated file? Only appear in the cron job not the dryrun.
     tpuSettings+: {
       preemptible: false,
     },
@@ -119,7 +119,7 @@ local volumes = import 'templates/volumes.libsonnet';
     name: 'pytorch-datasets-claim',
     mountPath: '/datasets',
   },
-  GpuMixin:: experimental.PjRtCuda {
+  GpuMixin:: experimental.PyTorchCudaVmMixin + experimental.PjRtCuda {
     local config = self,
     imageTag: 'nightly_3.10_cuda_12.1',
 
